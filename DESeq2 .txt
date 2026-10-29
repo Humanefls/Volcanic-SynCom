@@ -1,0 +1,40 @@
+rm(list=ls())
+#BiocManager::install("DESeq2")
+library(DESeq2)
+#BiocManager::install("apeglm")
+#library(apeglm) #更加激进
+#BiocManager::install("ashr")
+library(ashr) #温和
+#读取原始计数矩阵，使用的是原始数据（整数）
+counts <- read.table("D:/paper2/宏基因组/新/DESeq2处理/数据/KOV.txt", header = TRUE, row.names = 1, sep = "\t")
+
+# 读取样本信息表（包含样本名、分组，例如 "Sample","Group"）
+sample_info <- read.table("D:/paper2/宏基因组/新/DESeq2处理/数据/groupV.txt", header = TRUE, row.names = 1, sep = "\t")
+# 按列名顺序重排行
+sample_info <- sample_info[colnames(counts), , drop = FALSE]
+
+# 设置分组因子，指定 CK 为参考水平
+sample_info$Group <- factor(sample_info$Group, levels = c("VCK", "VS1", "VS2", "VS3"))
+
+# 构建 DESeq2 对象（如有批次等协变量，可在 design 中加入）
+dds <- DESeqDataSetFromMatrix(countData = counts,
+                              colData = sample_info,
+                              design = ~ Group)
+#过滤低丰度
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+# 运行 DESeq2
+dds <- DESeq(dds)
+
+res_V1_vs_CK <- lfcShrink(dds, contrast = c("Group", "VS1", "VCK"), type = "ashr")
+
+res_V2_vs_CK <- lfcShrink(dds, contrast = c("Group", "VS2", "VCK"), type = "ashr")
+
+res_V3_vs_CK <- lfcShrink(dds, contrast = c("Group", "VS3", "VCK"), type = "ashr")
+
+# 设置输出目录
+setwd("D:/paper2/宏基因组/新/DESeq2处理/数据")
+# 保存结果
+write.table(as.data.frame(res_V1_vs_CK), "V1_vs_CK_results_shrunken.txt", sep = "\t", quote = FALSE)
+write.table(as.data.frame(res_V2_vs_CK), "V2_vs_CK_results_shrunken.txt", sep = "\t", quote = FALSE)
+write.table(as.data.frame(res_V3_vs_CK), "V3_vs_CK_results_shrunken.txt", sep = "\t", quote = FALSE)

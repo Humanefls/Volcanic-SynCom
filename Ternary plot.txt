@@ -1,0 +1,31 @@
+##ggtern 三元图
+library(ggtern)
+dat3 <- dat
+#点的大小用于表示 OTUs 丰度
+#由于各 OTUs 丰度差异过大，为了美观，作图时取 3 个样本的平均值的 0.5 次方......
+dat3$size <- (apply(dat3[2:4], 2, mean))
+#点的大小用于表示 OTUs 丰度
+#由于各 OTUs 丰度差异过大，为了美观，作图时取 3 个样本的平均值的 0.5 次方......
+dat3$size <- (apply(dat3[2:4], 1, mean))
+#点的大小用于表示 OTUs 丰度
+#由于各 OTUs 丰度差异过大，为了美观，作图时取 3 个样本的平均值的 0.5 次方......
+dat3$size <- (apply(dat3[2:4], 1, mean))*2
+p_taxonomy <- ggtern(dat3, aes(T, F, S)) +
+geom_mask() +
+geom_point(aes(color = taxonomy, size = size), alpha = 0.8) +
+scale_size(range = c(0, 6)) +
+theme_bw() +
+theme(axis.text = element_blank(), axis.ticks = element_blank(), legend.title = element_blank()) +
+guides(size = 'none')
+p_taxonomy
+#点的大小用于表示 OTUs 丰度
+#由于各 OTUs 丰度差异过大，为了美观，作图时取 3 个样本的平均值的 0.5 次方......
+dat3$size <- (apply(dat3[2:4], 1, mean))
+p_taxonomy <- ggtern(dat3, aes(T, F, S)) +
+geom_mask() +
+geom_point(aes(color = taxonomy, size = size), alpha = 0.8) +
+scale_size(range = c(0, 6)) +
+theme_bw() +
+theme(axis.text = element_blank(), axis.ticks = element_blank(), legend.title = element_blank()) +
+guides(size = 'none')
+p_taxonomy

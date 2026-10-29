@@ -1,0 +1,82 @@
+#setwd("D:/R work")
+# 调用R包
+library(ggplot2)      # 绘图
+library(RColorBrewer) # 调色板
+library(tidyverse)    # mutate函数
+library(randomForest) # 传统随机森林
+library(rfPermute)    # 新型随机森林
+library(openxlsx)
+
+# 读取数据
+df <- read.xlsx('Metv.xlsx')
+#View(df)
+
+# 构建模型
+set.seed(123)
+
+#### 传统随机森林模型
+# 用随机森林算法来预测富度
+df.rf <- randomForest(Cd ~ .,   # 以Cd列为目标变量，其他列为特征变量
+                      data = df,       # 使用数据框df
+                      ntree = 1000,   # 设置生成1000棵树
+                      importance = TRUE,# 计算变量的重要性
+                      proximity = TRUE) # 计算样本之间的接近程度
+
+# 显示特征变量的重要性，一般选择显示
+importance(df.rf, decreasing = F)
+
+#### 新型随机森林模型
+set.seed(123)
+
+# 使用rfPermute函数对富度进行随机排列
+Cd.rfP <- rfPermute(Cd ~ .,  # 将Cd列随机排列，其他列作为特征变量
+                    data = df,     # 使用数据框df
+                    ntree = 1000,  # 设置生成1000棵树
+                    nrep = 299,    # 设置对数据进行随机排列的次数
+                    # 设置使用的处理器核心数量
+                    num.cores = 2) # 数据过多可以加大这个数字，多线程运行
+
+# 显示特征变量的重要性，一般选择显示
+importance(Cd.rfP, decreasing = F)
+
+# 创建一个数据框来存储特征变量的重要性
+Cd.data <- data.frame(importance(Cd.rfP,    # 提取富度.rfP模型的重要性信息
+                                 decreasing = F)) # 按照升序排列
+
+# 添加p值
+Cd.data <- mutate(Cd.data,
+                  label = ifelse(X.IncMSE.pval < 0.001, '***',
+                                 ifelse(X.IncMSE.pval < 0.01, '**',
+                                        ifelse(X.IncMSE.pval < 0.05, '*', ''))))
+
+# 添加变量名
+# 将行名作为名字列添加到数据框中
+Cd.data$name <- rownames(Cd.data)
+
+# 按X.IncMSE降序排序
+Cd.data <- Cd.data[order(-Cd.data$X.IncMSE), ]
+
+# 选取重要性排名前十的因子
+top_10_Cd.data <- head(Cd.data, 10)
+
+# 变量名排序
+top_10_Cd.data$name <- factor(top_10_Cd.data$name,  # 将名字列转换为因子变量
+                              levels = top_10_Cd.data$name)# 按照原始数据框中的顺序排序
+
+# 创建一个基于数据框top_10_Cd.data的ggplot对象p
+p <- ggplot(top_10_Cd.data,         # 数据框top_10_Cd.data
+            aes(name, X.IncMSE)) + # x轴为name列，y轴为X.IncMSE列
+  geom_bar(aes(fill = label),      # 使用柱状图表示数据，按照label列进行填充
+           stat = 'identity') +    # 使用stat = 'identity'保持原始数据
+  scale_fill_manual(values = brewer.pal(6,"Accent")) +  # 填充颜色为Accent调色板中的6种颜色
+  geom_text(aes(y = X.IncMSE + 0.5,# 柱状图上添加文字，y轴位置为X.IncMSE列值加0.5
+                label = label)) +  # 文字标签为label列
+  theme_classic() +                # 经典主题
+  labs(x = '',                     # x轴标签为空
+       y = 'Increase in MSE(%)') + # y轴标签为'Increase in MSE(%)'
+  theme(legend.position = '') +    # 隐藏图例
+  coord_flip()                     # 坐标轴翻转，将x轴和y轴交换
+
+# 显示绘图对象p
+p
+

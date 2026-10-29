@@ -1,0 +1,238 @@
+rm(list=ls())
+library(tidyverse)
+library(viridis)  # 用于颜色梯度
+library(scales)   # 用于格式化数值
+# 1. 读取数据
+data <- read_tsv("D:/paper2/差异代谢物/排序/V排序.txt", show_col_types = FALSE)
+# 查看数据结构
+cat("数据维度:", dim(data), "\n")
+cat("列名:", colnames(data), "\n")
+
+# 数据预处理
+# 重命名列以便使用
+colnames(data) <- c("metabolite", "group", "abundance")
+
+# 查看组信息
+cat("\n组统计:\n")
+group_stats <- data %>%
+  group_by(group) %>%
+  summarise(
+    count = n(),
+    total_abundance = sum(abundance, na.rm = TRUE)
+  ) %>%
+  arrange(desc(total_abundance))
+
+print(group_stats)
+
+# 2. 数据准备
+# 为每个代谢物计算组内排名和标准化棒子长度
+data <- data %>%
+  group_by(group) %>%
+  mutate(
+    # 计算组内排名（丰度从高到低）
+    group_rank = rank(-abundance, ties.method = "first"),
+    # 计算标准化棒子长度（排名最高的最长，排名最低的最短）
+    # 使用倒数关系：排名越高，棒子越长
+    stick_length = 1 / group_rank,  # 或者使用：stick_length = max(group_rank) - group_rank + 1
+    # 将棒子长度标准化到0.7-0.95范围（用于极坐标半径）
+    normalized_length = rescale(stick_length, to = c(0.7, 0.95)),
+    # 对丰度取对数以便更好地显示颜色梯度
+    log_abundance = log10(abundance + 1),
+    # 为颜色梯度准备
+    scaled_abundance = rescale(log_abundance, to = c(0, 1))
+  ) %>%
+  ungroup()
+
+# 3. 添加空位置作为组间间隙
+empty_bar <- 1  # 每个组后面添加的空位置数量
+n_groups <- n_distinct(data$group)
+
+# 创建空位置数据框
+empty_data <- data.frame(
+  metabolite = NA,
+  group = rep(unique(data$group), each = empty_bar),
+  abundance = NA,
+  group_rank = NA,
+  stick_length = NA,
+  normalized_length = NA,
+  log_abundance = NA,
+  scaled_abundance = NA
+)
+
+# 合并数据
+full_data <- bind_rows(data, empty_data) %>%
+  arrange(group, group_rank, is.na(abundance)) %>%
+  mutate(
+    id = row_number(),
+    # 标记是否为真实数据
+    is_real = !is.na(abundance)
+  )
+
+# 4. 计算角度位置
+total_items <- nrow(full_data)
+full_data <- full_data %>%
+  mutate(
+    # 计算每个项目在圆上的角度（0-360度）
+    angle = 90 - 360 * (id - 0.5) / total_items,
+    # 计算半径（真实数据用标准化长度，空数据用0）
+    radius = ifelse(is_real, normalized_length, 0),
+    # 计算在直角坐标系中的位置
+    x = radius * cos(angle * pi / 180),
+    y = radius * sin(angle * pi / 180),
+    # 计算起始点位置（圆心到圆点的连线起点）
+    x_start = 0.6 * cos(angle * pi / 180),  # 起始半径稍小
+    y_start = 0.6 * sin(angle * pi / 180)
+  )
+
+# 5. 准备组标签数据
+group_label_data <- full_data %>%
+  filter(is_real) %>%
+  group_by(group) %>%
+  summarise(
+    min_angle = min(angle),
+    max_angle = max(angle),
+    mid_angle = mean(c(min_angle, max_angle)),
+    # 计算标签位置（在半径0.5的位置）
+    label_radius = 0.5,
+    label_x = label_radius * cos(mid_angle * pi / 180),
+    label_y = label_radius * sin(mid_angle * pi / 180),
+    count = n(),
+    # 计算平均丰度
+    mean_abundance = mean(abundance, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+
+# 6. 创建环形棒棒糖图
+p <- ggplot() +
+  # 添加背景网格线（同心圆）
+  geom_segment(
+    aes(x = 0, xend = 0, y = 0.7, yend = 0.7),
+    color = "gray90", size = 0.3, linetype = "dashed"
+  ) +
+  geom_segment(
+    aes(x = 0, xend = 0, y = 0.8, yend = 0.8),
+    color = "gray90", size = 0.3, linetype = "dashed"
+  ) +
+  geom_segment(
+    aes(x = 0, xend = 0, y = 0.9, yend = 0.9),
+    color = "gray90", size = 0.3, linetype = "dashed"
+  ) +
+  
+  # 添加棒子（连接线）
+  geom_segment(
+    data = full_data %>% filter(is_real),
+    aes(x = x_start, y = y_start, xend = x, yend = y),
+    color = "gray70",
+    size = 0.5,
+    alpha = 0.6
+  ) +
+ 
+  # 添加圆点（大小固定，颜色表示丰度）
+  geom_point(
+    data = full_data %>% filter(is_real),
+    aes(x = x, y = y, color = scaled_abundance),
+    size = 4,  # 固定大小
+    alpha = 0.9
+  ) +
+  {
+    # 准备圆弧数据：每个组从 min_angle 到 max_angle 生成平滑曲线
+    arc_data <- full_data %>%
+      filter(is_real) %>%
+      group_by(group) %>%
+      summarise(min_angle = min(angle), max_angle = max(angle)) %>%
+      group_by(group) %>%
+      group_modify(~ {
+        # 生成50个点使圆弧平滑
+        angles <- seq(.x$min_angle, .x$max_angle, length.out = 50)
+        data.frame(angle = angles)
+      }) %>%
+      ungroup() %>%
+      mutate(
+        radius = 0.6,  # 与棒棒糖起点半径一致
+        x = radius * cos(angle * pi / 180),
+        y = radius * sin(angle * pi / 180)
+      )
+    
+    geom_path(
+      data = arc_data,
+      aes(x = x, y = y, group = group),
+      color = "black",    # 所有组同色，可自行修改
+      size = 0.8,
+      lineend = "round"
+    )
+  } +
+  
+  # 添加组标签（保持不变）
+  geom_text(
+    data = group_label_data,
+    aes(x = label_x, y = label_y, label = paste0(group, "\n(n=", count, ")")),
+    size = 3.5, fontface = "bold", color = "darkblue", hjust = 0.5, vjust = 0.5
+  ) +
+  # 添加组标签
+  geom_text(
+    data = group_label_data,
+    aes(x = label_x, y = label_y, label = paste0(group, "\n(n=", count, ")")),
+    size = 3.5,
+    fontface = "bold",
+    color = "darkblue",
+    hjust = 0.5,
+    vjust = 0.5
+  ) +
+  
+  # 添加丰度最高的代谢物标签（可选）
+  geom_text(
+    data = full_data %>% filter(is_real & group_rank == 1),
+    aes(x = x, y = y, label = str_trunc(metabolite, 15)),
+    size = 2.5,
+    color = "black",
+    nudge_y = 0.03,
+    check_overlap = TRUE
+  ) +
+  
+  # 设置颜色梯度（使用viridis色系）
+  scale_color_gradient(
+    name = "Log10(Abundance)",
+    low = "#72c0f9",    # 低丰度的颜色
+    high = "#f6867c",   # 高丰度的颜色
+    breaks = c(0, 0.5, 1),
+    labels = c("Low", "Medium", "High"),
+    guide = guide_colorbar(
+      barwidth = unit(3, "cm"),
+      barheight = unit(0.3, "cm"),
+      direction = "horizontal",
+      title.position = "top",
+      title.hjust = 0.5
+    )
+  ) +
+  
+  # 设置坐标轴比例
+  coord_equal() +
+  xlim(-1.1, 1.1) +
+  ylim(-1.1, 1.1) +
+  
+  # 自定义主题
+  theme_void() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold", margin = margin(b = 10)),
+    plot.subtitle = element_text(hjust = 0.5, size = 12, color = "gray40", margin = margin(b = 15)),
+    plot.caption = element_text(hjust = 0.5, size = 9, color = "gray50", margin = margin(t = 10)),
+    legend.position = "bottom",
+    legend.title = element_text(size = 10, face = "bold"),
+    legend.text = element_text(size = 9),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  
+  # 添加图例说明
+  labs(
+    title = "Metabolite Circular Lollipop Plot",
+    subtitle = "Point color = Abundance (darker = higher) | Stick length = Rank within group (longer = higher rank)",
+    caption = paste("Total metabolites:", nrow(data), "| Groups:", n_groups, "| Date:", Sys.Date())
+  )
+
+# 显示图形
+print(p)
+setwd("D:/paper2/差异代谢物/排序")
+# 保存图形
+ggsave("V1棒.pdf", p, width = 10, height = 10, dpi = 300, bg = "white")

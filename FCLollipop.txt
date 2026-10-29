@@ -1,0 +1,79 @@
+rm(list=ls())
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# 方法1：使用read.table（最常用，适用于制表符或空格分隔）
+data <- read.table("D:/paper2/宏基因组/新/差异C基因FC/V3基因.txt", 
+                   header = TRUE,           # 第一行是列名
+                   sep = "\t",              # 制表符分隔，如果是空格分隔改为sep = " "
+                   stringsAsFactors = FALSE,
+                   quote = "")              # 不处理引号，保留原始文本
+
+# 查看数据结构，确认读取正确
+print(head(data))
+print(str(data))
+
+# 清理列名（去除可能的空格）
+colnames(data) <- trimws(colnames(data))
+
+# 去除Index列中可能的前后空格
+data$Index <- trimws(data$Index)
+
+# 根据FDR值添加显著性标记
+data <- data %>%
+  mutate(Significance = case_when(
+    FDR < 0.001 ~ "***",
+    FDR < 0.01 ~ "**",
+    FDR < 0.05 ~ "*",
+    TRUE ~ "ns"
+  ))
+
+# 根据Log2FC排序（可选，使图形更美观）
+data <- data %>%
+  arrange(Log2FC) %>%
+  mutate(Index = factor(Index, levels = Index))
+
+# 创建棒棒糖图
+p <- ggplot(data, aes(x = Log2FC, y = Index)) +
+  # 添加线段（棒棒糖的"棒"）
+  geom_segment(aes(x = 0, xend = Log2FC, y = Index, yend = Index),
+               color = "gray50", size = 0.8) +
+  # 添加点（棒棒糖的"糖"）
+  geom_point(aes(color = Log2FC > 0, size = -log10(FDR)), 
+             alpha = 0.8) +
+  # 添加显著性标记
+  geom_text(aes(label = Significance, x = Log2FC + sign(Log2FC) * 0.2),
+            vjust = 0.5, size = 5) +
+  # 添加一条垂直线在x=0处
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#f7f29d", alpha = 0.5) +
+  # 自定义颜色
+  scale_color_manual(values = c("TRUE" = "#e3827b", "FALSE" = "#6aa4d5"),
+                     labels = c("TRUE" = "Up-regulated", "FALSE" = "Down-regulated"),
+                     name = "Regulation") +
+  # 自定义点的大小
+  scale_size_continuous(name = "-log10(FDR)") +
+  # 主题美化
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 12, face = "bold"),
+    axis.text = element_text(size = 10),
+    axis.text.y = element_text(size = 10, color = "black"),
+    axis.text.x = element_text(size = 10, color = "black"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", linetype = "dashed"),
+    legend.position = "right",
+    legend.title = element_text(size = 10, face = "bold"),
+    legend.text = element_text(size = 9)
+  ) +
+  # 轴标签
+  labs(x = "Log2 Fold Change", y = "Gene/Protein Index",
+       title = "Differential Expression Analysis",
+       subtitle = paste("Significance levels: * FDR < 0.05, ** FDR < 0.01, *** FDR < 0.001"))
+
+# 显示图形
+print(p)
+setwd("D:/paper2/宏基因组/新/差异C基因FC/结果图")
+# 保存图形（可选）
+ggsave("V3基因.pdf", p, width = 6, height = 6, dpi = 300)

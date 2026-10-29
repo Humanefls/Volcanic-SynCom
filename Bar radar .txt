@@ -1,0 +1,187 @@
+rm(list = ls())
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(readr)
+library(tidyr)
+
+# 1. 读取数据
+# 文本文件名为"分类.txt"，包含metab_id和super_class两列
+metab_data <- read_delim("D:/paper2/差异代谢物/方案四/分类.txt", delim = "\t", col_names = TRUE)
+
+# 查看数据结构
+cat("数据维度:", dim(metab_data), "\n")
+cat("列名:", colnames(metab_data), "\n")
+cat("前几行数据:\n")
+print(head(metab_data))
+
+# 2. 数据预处理
+# 将"-"改为"Unclassified"，处理缺失的分类
+plot_df <- metab_data %>%
+  # 清洗和转换分类名称
+  mutate(
+    super_class = ifelse(super_class == "-" | is.na(super_class) | super_class == "", 
+                         "Unclassified", 
+                         super_class),
+    # 将长分类名称缩短以便更好显示
+    super_class_short = str_trunc(super_class, width = 25, ellipsis = "...")
+  ) %>%
+  # 按分类分组
+  group_by(super_class, super_class_short) %>%
+  summarise(
+    n = n(),  # 每个类别的代谢物数量
+    # 为了可视化效果，创建两个额外的指标（基于数量）
+    # 您可以替换这些模拟指标为实际数据
+    abundance = n * 1.2,  # 模拟丰度指标
+    diversity = n * 0.8 + rnorm(1, mean = 5, sd = 1)  # 模拟多样性指标
+  ) %>%
+  ungroup() %>%
+  # 排序，让最多的类别在顶部
+  arrange(desc(n)) %>%
+  # 添加排名
+  mutate(
+    rank = row_number(),
+    # 确保数值为正
+    abundance = ifelse(abundance < 0, 0, abundance),
+    diversity = ifelse(diversity < 0, 0, diversity),
+    # 计算百分比
+    percent = round(n / sum(n) * 100, 1)
+  )
+
+# 查看处理后的数据
+cat("\n处理后数据摘要:\n")
+print(plot_df)
+
+# 3. 创建基础雷达图
+# 确定网格线的范围
+max_value <- max(plot_df$n) * 1.3
+grid_lines <- seq(0, max_value, length.out = 5)
+grid_lines <- round(grid_lines)
+
+plt <- ggplot(plot_df) +
+  # 创建背景网格线（同心圆）
+  geom_hline(
+    aes(yintercept = y),
+    data.frame(y = grid_lines),
+    color = "lightgrey",
+    alpha = 0.6,
+    linewidth = 0.3
+  ) +
+  
+  # 添加径向网格线
+  geom_vline(
+    aes(xintercept = x),
+    data.frame(x = 1:nrow(plot_df)),
+    color = "lightgrey",
+    alpha = 0.3,
+    linewidth = 0.2
+  ) +
+  
+  # 添加条形：高度表示代谢物数量
+  geom_col(
+    aes(
+      x = reorder(super_class_short, n),
+      y = n,
+      fill = abundance  # 颜色基于丰度
+    ),
+    position = "dodge2",
+    show.legend = TRUE,
+    alpha = 0.85,
+    width = 0.75
+  ) +
+  
+ 
+  
+  # 添加从原点到多样性指标的连接线
+  geom_segment(
+    aes(
+      x = reorder(super_class_short, n),
+      y = 0,
+      xend = reorder(super_class_short, n),
+      yend = max_value * 0.9  # 调整到合适的高度
+    ),
+    linetype = "dashed",
+    color = "gray40",
+    alpha = 0.6,
+    linewidth = 0.4
+  ) +
+  
+  # 添加数据标签（代谢物数量）
+  geom_text(
+    aes(
+      x = reorder(super_class_short, n),
+      y = n,
+      label = paste0(n, " (", percent, "%)")
+    ),
+    vjust = -0.5,
+    size = 3,
+    color = "black",
+    fontface = "bold"
+  ) +
+  
+  # 设置颜色梯度
+  scale_fill_gradient2(
+    name = "Abundance\nScore",
+    low = "#d2e1bc",
+    mid = "#a5c986",
+    high = "#63a684",
+    midpoint = median(plot_df$abundance)
+  ) +
+  
+  # 转换为极坐标（创建雷达图效果）
+  coord_polar(start = -pi/2/nrow(plot_df)) +  # 稍微旋转使图形对称
+  
+  # 扩展y轴范围以容纳标签
+  scale_y_continuous(
+    limits = c(0, max_value * 1.1),
+    breaks = grid_lines
+  ) +
+  
+  # 自定义主题
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(
+      size = 10, 
+      face = "bold",
+      color = "black",
+      angle = 0
+    ),
+    panel.grid = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", linetype = "dotted"),
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold", margin = margin(b = 15)),
+    plot.subtitle = element_text(hjust = 0.5, size = 12, color = "gray40", margin = margin(b = 20)),
+    plot.caption = element_text(hjust = 0.5, size = 9, color = "gray50", margin = margin(t = 10)),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 10),
+    legend.text = element_text(size = 9),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  
+  # 添加标签
+  labs(
+    title = "Metabolite Super Class Distribution - Radar Plot",
+    subtitle = "Bar height = Number of metabolites | Points = Diversity score | Color = Abundance score",
+    caption = paste("Total metabolites:", sum(plot_df$n), 
+                    "| Classes:", nrow(plot_df), 
+                    "| Generated:", Sys.Date()),
+    x = NULL,
+    y = NULL,
+    fill = "Abundance\nScore"
+  )
+
+# 显示图形
+print(plt)
+setwd("D:/paper2/差异代谢物/方案四")
+# 4. 保存图形
+output_file <- paste0("metabolite_radar_plot_", format(Sys.Date(), "%Y%m%d"), ".pdf")
+ggsave(
+  filename = output_file,
+  plot = plt,
+  width = 12,
+  height = 10,
+  dpi = 300,
+  bg = "white"
+)

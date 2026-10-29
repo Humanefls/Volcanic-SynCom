@@ -1,0 +1,96 @@
+#安装、加载包
+#library(circlize)
+#library(statnet)
+
+#准备数据
+data <- read.table("Scir.txt", header = TRUE, sep = "\t", row.names = 1)
+
+# 计算每一行的和并按降序排列
+data$sum <- rowSums(data)
+data1 <- data[order(data$sum, decreasing = TRUE), ]
+
+# 删除sum列
+data1 <- data1[, -13]
+
+# 按行计算指定列的平均值
+data1$LDT <- apply(data1[, 1:4], 1, mean)
+data1$LDF <- apply(data1[, 5:8], 1, mean)
+data1$LDS <- apply(data1[, 9:12], 1, mean)
+
+# 提取平均值列到新的数据集
+data2 <- data1[, 13:15]
+
+# 计算丰富度排名前10的物种的相对丰度
+data3 <- data2[1:10, ] / apply(data2, 2, sum)
+
+# 计算剩下物种的总丰度并合并数据
+data4 <- 1 - apply(data3, 2, sum)
+data3 <- rbind(data3, data4)
+rownames(data3)[nrow(data3)] <- "Other"# 修改最后一行行名others
+data3 <- as.matrix(data3)
+# 检查数据
+print(row.names(data3))
+data <- as.matrix(data)
+#生成作图数据
+df <- data.frame(from = rep(rownames(data3), ncol(data3)),
+                 to = rep(colnames(data3), each = nrow(data3)),
+                 value = as.vector(data3))
+
+#颜色设定
+color=NULL
+color[c("NR","R")]=c("#6bb82a","#f6941f")
+color[rownames(data3)]=c("#fcc101","#ff7e7a","#95feb4","#32806d","#7e674a",
+                         "#ff95f4","#fcfdd4","#46c7ec","#f1a6a5","#e8c56b","#c6c6c6")
+#绘图
+# circos.par(start.degree = 90)#调整放置方向
+chordDiagram(df, 
+             grid.col =color,
+             annotationTrack = "grid",#diy添加label和axis
+             transparency = 0.2,#透明度
+             link.lwd = 0.00001,#线条宽度
+             link.lty = 1,    # 线路类型
+             link.border = 0,#边框颜色
+             directional = -1,#表示线条的方向，0代表没有方向，1代表正向，-1代表反向，2代表双向
+             diffHeight = mm_h(3),#外圈和中间连线的间隔
+             direction.type = c("diffHeight","arrows"), #线条是否带有箭头
+             link.arr.type = "big.arrow",#箭头类型
+             annotationTrackHeight = c(0.04, 0.1))#网格高度
+
+
+#设置标签的方向
+circos.track(track.index = 1, panel.fun = function(x, y) {
+  circos.text(CELL_META$xcenter, CELL_META$ylim[1], CELL_META$sector.index,
+              facing = "clockwise", niceFacing = T, adj = c(-0.5, 0.5), cex = 0.8)
+  circos.axis(h = "top", labels.cex = 0.4,labels.niceFacing = F, labels.pos.adjust =F)
+}, bg.border = NA)
+
+
+# 图例制作
+legend("right",pch=20,legend=rownames(data3),
+       col=color[rownames(data3)],bty="n",
+       cex=1,pt.cex=3,border="black") # 设定图例
+
+# 设置图片文件名、长宽和字体大小
+pdf(file="bac.A.pdf", width=9, height=5, pointsize=8)
+chordDiagram(df, 
+             grid.col =color,
+             annotationTrack = "grid",#diy添加label和axis
+             transparency = 0.2,#透明度
+             link.lwd = 0.001,#线条宽度
+             link.lty = 1,    # 线路类型
+             link.border = 0,#边框颜色
+             directional = -1,#表示线条的方向，0代表没有方向，1代表正向，-1代表反向，2代表双向
+             diffHeight = mm_h(3),#外圈和中间连线的间隔
+             direction.type = c("diffHeight","arrows"), #线条是否带有箭头
+             link.arr.type = "big.arrow",#箭头类型
+             annotationTrackHeight = c(0.04, 0.1))#网格高度
+circos.track(track.index = 1, panel.fun = function(x, y) {
+  circos.text(CELL_META$xcenter, CELL_META$ylim[1], CELL_META$sector.index,
+              facing = "clockwise", niceFacing = T, adj = c(-0.5, 0.5), cex = 0.8)
+  circos.axis(h = "top", labels.cex = 0.4,labels.niceFacing = F, labels.pos.adjust =F)
+}, bg.border = NA)
+legend("right",pch=20,legend=rownames(data3),
+       col=color[rownames(data3)],bty="n",
+       cex=1,pt.cex=3,border="black") # 设定图例
+dev.off()
+

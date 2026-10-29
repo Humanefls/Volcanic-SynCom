@@ -1,0 +1,41 @@
+rm(list=ls())
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+
+# 读取两个数据文件（请根据实际文件名修改）
+data1 <- read.table("D:/paper2/差异代谢物/二筛/散点图/数据/S 2，1，1.txt", 
+                        header = TRUE, row.names = 1)
+
+data2 <- read.table("D:/paper2/差异代谢物/二筛/散点图/数据/S 2，1，2.txt", 
+                        header = TRUE, row.names = 1)
+
+
+# 添加数据来源标签
+data1$Dataset <- "Dataset 1"
+data2$Dataset <- "Dataset 2"
+
+# 合并数据框
+combined_data <- rbind(data1, data2)
+
+# 计算 log2(1.5) 作为阈值
+fc_threshold <- log2(1.5)
+
+# 绘制合并散点图，用颜色区分数据集
+p <- ggplot(combined_data, aes(x = log2FC, y = CV)) +
+  geom_point(aes(color = Dataset),  # 颜色按数据集区分
+             size = 3, alpha = 0.8) +
+  scale_color_manual(values = c("Dataset 1" = "#aadcd2", "Dataset 2" = "#cca4c4")) +  # 指定两种颜色
+  geom_vline(xintercept = c(-fc_threshold, fc_threshold), 
+             linetype = "dashed") +
+  labs(x = "log2(Fold Change)", y = "CV",
+       title = "Combined scatter plot of two datasets",
+       color = "Dataset") +
+  theme_bw() +
+  theme(legend.position = "right")
+
+print(p)
+
+setwd("D:/paper2/差异代谢物/二筛/散点图")
+# 保存合并后的图片
+ggsave("Combined_S212.pdf", p, width = 10, height = 10)

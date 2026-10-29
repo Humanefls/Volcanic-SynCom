@@ -1,0 +1,16 @@
+#下载包
+Packages <- c("Rcpp", "RcppArmadillo", "vegan", "dplyr", "reshape2", "gridExtra", "ggplot2", "ggthemes")
+install.packages(Packages)
+lapply(Packages, library, character.only = TRUE)
+#下载FEAST
+devtools::install_github("cozygene/FEAST")
+#运行
+library(FEAST)
+metadata <- Load_metadata(metadata_path = "E:/R/FEAST/PS/meta_PS.txt")
+otus <- Load_CountMatrix(CountMatrix_path = "E:/R/FEAST/PS/OTU_PS.txt")
+FEAST_output <- FEAST(C = otus, metadata = metadata, different_sources_flag = 0, dir_path = "E:/R/FEAST/PS/",
+                      outfile="demo")
+FEAST_output <- read.table (file="demo_source_contributions_matrix.txt")
+PlotSourceContribution(SinkNames = rownames(FEAST_output)[c(5:8)],
+                       SourceNames = colnames(FEAST_output), dir_path = "E:/R/FEAST/CK/",
+                       mixing_proportions = FEAST_output, Plot_title = "Test_",Same_sources_flag = 0, N = 4)

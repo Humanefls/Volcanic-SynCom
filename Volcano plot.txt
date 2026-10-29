@@ -1,0 +1,33 @@
+rm(list=ls())
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+
+# 读取数据（假设列名包含特殊字符“-”，需用反引号括起来）
+gene_data <- read.table("D:/paper2/差异代谢物/组成/初筛上调下调火山图/火山图/V3.txt", 
+                        header = TRUE, row.names = 1)
+
+# 计算 log2(1.5) 作为阈值
+fc_threshold <- log2(1.5)   # 约 0.5849625
+
+# 绘制火山图
+p <- ggplot(gene_data, aes(x = log2FC, y = lgFDR)) +   
+  # 第一层：VIP >= 1 的点，按 -lgFDR 连续着色
+  geom_point(data = subset(gene_data, VIP >= 1), 
+             aes(color = lgFDR), size = 3, alpha = 0.8) +
+  # 第二层：VIP < 1 的点，固定为灰色
+  geom_point(data = subset(gene_data, VIP < 1), 
+             color = "gray", size = 3, alpha = 0.8) +
+  scale_color_gradientn(
+    colors = c("#6aa4d5", "#8ac6e8", "#f7f29d", "#e3827b"),
+    name = "-log10(FDR)",limits = c(0, 6)) +
+  geom_vline(xintercept = c(-fc_threshold, fc_threshold),  # 垂直虚线位置：±log2(1.5)
+             linetype = "dashed") +
+  coord_cartesian(xlim = c(-3, 3), ylim = c(0, 5.5)) +  # 固定坐标轴范围
+  theme_bw()
+
+print(p)
+
+# 保存图片
+setwd("D:/paper2/差异代谢物/组成/初筛上调下调火山图/火山图")
+ggsave("V3.pdf", p, width = 8, height = 10)
